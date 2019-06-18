@@ -41,6 +41,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
     // Protected Properties
     // -------------------------------------------------------------------------
 
+    protected withSchema: boolean;
+
     /**
      * Promise used to obtain a database connection for a first time.
      */
@@ -59,6 +61,7 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
         super();
         this.driver = driver;
         this.connection = driver.connection;
+        this.withSchema = this.connection.options.extra.withSchema;
         this.mode = mode;
         this.broadcaster = new Broadcaster(this);
     }
@@ -111,6 +114,13 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
         if (index !== -1) this.driver.connectedQueryRunners.splice(index);
 
         return Promise.resolve();
+    }
+
+    /**
+     * Specify search path
+     */
+    async selectSchema(schema: string): Promise<void> {
+        await this.query("SET search_path TO " + schema + ", public");
     }
 
     /**
@@ -457,8 +467,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
             const newIndexName = this.connection.namingStrategy.indexName(newTable, index.columnNames, index.where);
 
             // build queries
-            const up = schema ? `ALTER INDEX "${schema}"."${index.name}" RENAME TO "${newIndexName}"` : `ALTER INDEX "${index.name}" RENAME TO "${newIndexName}"`;
-            const down = schema ? `ALTER INDEX "${schema}"."${newIndexName}" RENAME TO "${index.name}"` : `ALTER INDEX "${newIndexName}" RENAME TO "${index.name}"`;
+            const up = this.withSchema && schema ? `ALTER INDEX "${schema}"."${index.name}" RENAME TO "${newIndexName}"` : `ALTER INDEX "${index.name}" RENAME TO "${newIndexName}"`;
+            const down = this.withSchema && schema ? `ALTER INDEX "${schema}"."${newIndexName}" RENAME TO "${index.name}"` : `ALTER INDEX "${newIndexName}" RENAME TO "${index.name}"`;
             upQueries.push(new Query(up));
             downQueries.push(new Query(down));
 
@@ -642,8 +652,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
                     const seqName = this.buildSequenceName(table, oldColumn.name, undefined, true, true);
                     const newSeqName = this.buildSequenceName(table, newColumn.name, undefined, true, true);
 
-                    const up = schema ? `ALTER SEQUENCE "${schema}"."${seqName}" RENAME TO "${newSeqName}"` : `ALTER SEQUENCE "${seqName}" RENAME TO "${newSeqName}"`;
-                    const down = schema ? `ALTER SEQUENCE "${schema}"."${newSeqName}" RENAME TO "${seqName}"` : `ALTER SEQUENCE "${newSeqName}" RENAME TO "${seqName}"`;
+                    const up = this.withSchema && schema ? `ALTER SEQUENCE "${schema}"."${seqName}" RENAME TO "${newSeqName}"` : `ALTER SEQUENCE "${seqName}" RENAME TO "${newSeqName}"`;
+                    const down = this.withSchema && schema ? `ALTER SEQUENCE "${schema}"."${newSeqName}" RENAME TO "${seqName}"` : `ALTER SEQUENCE "${newSeqName}" RENAME TO "${seqName}"`;
                     upQueries.push(new Query(up));
                     downQueries.push(new Query(down));
                 }
@@ -672,8 +682,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
                     const newIndexName = this.connection.namingStrategy.indexName(clonedTable, index.columnNames, index.where);
 
                     // build queries
-                    const up = schema ? `ALTER INDEX "${schema}"."${index.name}" RENAME TO "${newIndexName}"` : `ALTER INDEX "${index.name}" RENAME TO "${newIndexName}"`;
-                    const down = schema ? `ALTER INDEX "${schema}"."${newIndexName}" RENAME TO "${index.name}"` : `ALTER INDEX "${newIndexName}" RENAME TO "${index.name}"`;
+                    const up = this.withSchema && schema ? `ALTER INDEX "${schema}"."${index.name}" RENAME TO "${newIndexName}"` : `ALTER INDEX "${index.name}" RENAME TO "${newIndexName}"`;
+                    const down = this.withSchema && schema ? `ALTER INDEX "${schema}"."${newIndexName}" RENAME TO "${index.name}"` : `ALTER INDEX "${newIndexName}" RENAME TO "${index.name}"`;
                     upQueries.push(new Query(up));
                     downQueries.push(new Query(down));
 
@@ -1865,7 +1875,7 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
     protected dropIndexSql(table: Table, indexOrName: TableIndex|string): Query {
         let indexName = indexOrName instanceof TableIndex ? indexOrName.name : indexOrName;
         const schema = this.extractSchema(table);
-        return schema ? new Query(`DROP INDEX "${schema}"."${indexName}"`) : new Query(`DROP INDEX "${indexName}"`);
+        return this.withSchema && schema ? new Query(`DROP INDEX "${schema}"."${indexName}"`) : new Query(`DROP INDEX "${indexName}"`);
     }
 
     /**
@@ -1983,11 +1993,13 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
 
     /**
      * Builds ENUM type name from given table and column.
+     * TODO: Not sure about withSchema here
      */
-    protected buildEnumName(table: Table, columnOrName: TableColumn|string, withSchema: boolean = true, disableEscape?: boolean, toOld?: boolean): string {
+    protected buildEnumName(table: Table, columnOrName: TableColumn|string, withSchema: boolean = this.withSchema, disableEscape?: boolean, toOld?: boolean): string {
         const columnName = columnOrName instanceof TableColumn ? columnOrName.name : columnOrName;
         const schema = table.name.indexOf(".") === -1 ? this.driver.options.schema : table.name.split(".")[0];
         const tableName = table.name.indexOf(".") === -1 ? table.name : table.name.split(".")[1];
+        // TODO Using withSchema concept from here
         let enumName = schema && withSchema ? `${schema}.${tableName}_${columnName.toLowerCase()}_enum` : `${tableName}_${columnName.toLowerCase()}_enum`;
         if (toOld)
             enumName = enumName + "_old";
@@ -2017,7 +2029,8 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
      */
     protected escapePath(target: Table|View|string, disableEscape?: boolean): string {
         let tableName = target instanceof Table || target instanceof View ? target.name : target;
-        tableName = tableName.indexOf(".") === -1 && this.driver.options.schema ? `${this.driver.options.schema}.${tableName}` : tableName;
+        // TODO Why do we second-guess generated table name here?
+        // tableName = tableName.indexOf(".") === -1 && this.driver.options.schema ? `${this.driver.options.schema}.${tableName}` : tableName;
 
         return tableName.split(".").map(i => {
             return disableEscape ? i : `"${i}"`;
@@ -2031,7 +2044,7 @@ export class PostgresQueryRunner extends BaseQueryRunner implements QueryRunner 
         const tableName = target instanceof Table ? target.name : target;
         if (tableName.indexOf(".") === -1) {
             return {
-                schema: this.driver.options.schema ? `'${this.driver.options.schema}'` : "current_schema()",
+                schema: this.withSchema && this.driver.options.schema ? `'${this.driver.options.schema}'` : "current_schema()",
                 tableName: `'${tableName}'`
             };
         } else {

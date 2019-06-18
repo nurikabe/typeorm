@@ -120,6 +120,12 @@ export class MongoQueryRunner implements QueryRunner {
     // -------------------------------------------------------------------------
 
     /**
+     * Specify search path
+     * TODO: How does this work for Mongo?
+     */
+    async selectSchema(schema: string): Promise<void> {}
+
+    /**
      * Creates a cursor for a query that can be used to iterate over results from MongoDB.
      */
     cursor(collectionName: string, query?: ObjectLiteral): Cursor<any> {

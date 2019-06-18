@@ -36,6 +36,11 @@ export class MigrationGenerateCommand implements yargs.CommandModule {
                 alias: "config",
                 default: "ormconfig",
                 describe: "Name of the file with connection configuration."
+            })
+            .option("s", {
+                alias: "with-schema",
+                default: "default",
+                describe: "Prefix table, index, etc. queries with schema.",
             });
     }
 
@@ -71,7 +76,8 @@ export class MigrationGenerateCommand implements yargs.CommandModule {
                 synchronize: false,
                 migrationsRun: false,
                 dropSchema: false,
-                logging: false
+                logging: false,
+                extra: {withSchema: args["with-schema"] === "false" ? false : true }
             });
             connection = await createConnection(connectionOptions);
             const sqlInMemory = await connection.driver.createSchemaBuilder().log();

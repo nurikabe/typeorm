@@ -106,6 +106,12 @@ export abstract class BaseQueryRunner {
     // -------------------------------------------------------------------------
 
     /**
+     * Specify search path
+     * TODO: Implement for children
+     */
+    async selectSchema(schema: string): Promise<void> {}
+
+    /**
      * Loads given table's data from the database.
      */
     async getTable(tablePath: string): Promise<Table|undefined> {

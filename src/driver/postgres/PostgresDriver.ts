@@ -551,7 +551,7 @@ export class PostgresDriver implements Driver {
      * E.g. "mySchema"."myTable"
      */
     buildTableName(tableName: string, schema?: string): string {
-        return schema ? `${schema}.${tableName}` : tableName;
+        return this.connection.options.extra.withSchema && schema ? `${schema}.${tableName}` : tableName;
     }
 
     /**

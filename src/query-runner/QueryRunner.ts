@@ -81,6 +81,11 @@ export interface QueryRunner {
     clearDatabase(database?: string): Promise<void>;
 
     /**
+     * Specify schema to use.
+     */
+    selectSchema(schema: string): Promise<void>;
+
+    /**
      * Starts transaction.
      */
     startTransaction(isolationLevel?: IsolationLevel): Promise<void>;

@@ -20,6 +20,8 @@ export class MigrationExecutor {
     // Public Properties
     // -------------------------------------------------------------------------
 
+    defaultSchema: string;
+
     /**
      * Indicates if migrations must be executed in a transaction.
      */
@@ -133,6 +135,10 @@ export class MigrationExecutor {
         if (lastTimeExecutedMigration)
             this.connection.logger.logSchemaBuild(`${lastTimeExecutedMigration.name} is the last executed migration. It was executed on ${new Date(lastTimeExecutedMigration.timestamp).toString()}.`);
         this.connection.logger.logSchemaBuild(`${pendingMigrations.length} migrations are new migrations that needs to be executed.`);
+
+        if (this.defaultSchema) {
+            await queryRunner.selectSchema(this.defaultSchema);
+        }
 
         // start transaction if its not started yet
         let transactionStartedByUs = false;
@@ -259,6 +265,11 @@ export class MigrationExecutor {
         if (this.connection.driver instanceof MongoDriver) {
             return;
         }
+
+        if (this.defaultSchema) {
+            await queryRunner.selectSchema(this.defaultSchema);
+        }
+
         const tableExist = await queryRunner.hasTable(this.migrationsTable); // todo: table name should be configurable
         if (!tableExist) {
             await queryRunner.createTable(new Table(
@@ -354,9 +365,9 @@ export class MigrationExecutor {
             values["timestamp"] = migration.timestamp;
             values["name"] = migration.name;
         }
-        if (this.connection.driver instanceof MongoDriver) {  
+        if (this.connection.driver instanceof MongoDriver) {
             const mongoRunner = queryRunner as MongoQueryRunner;
-            mongoRunner.databaseConnection.db(this.connection.driver.database!).collection(this.migrationsTableName).insert(values);               
+            mongoRunner.databaseConnection.db(this.connection.driver.database!).collection(this.migrationsTableName).insert(values);
         } else {
             const qb = queryRunner.manager.createQueryBuilder();
             await qb.insert()
@@ -382,7 +393,7 @@ export class MigrationExecutor {
 
         if (this.connection.driver instanceof MongoDriver) {
             const mongoRunner = queryRunner as MongoQueryRunner;
-            mongoRunner.databaseConnection.db(this.connection.driver.database!).collection(this.migrationsTableName).deleteOne(conditions);               
+            mongoRunner.databaseConnection.db(this.connection.driver.database!).collection(this.migrationsTableName).deleteOne(conditions);
         } else {
             const qb = queryRunner.manager.createQueryBuilder();
             await qb.delete()

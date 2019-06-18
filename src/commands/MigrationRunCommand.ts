@@ -30,6 +30,11 @@ export class MigrationRunCommand implements yargs.CommandModule {
                 alias: "f",
                 default: "ormconfig",
                 describe: "Name of the file with connection configuration."
+            })
+            .option("default-schema", {
+                alias: "s",
+                default: "default",
+                describe: "Specify default schema.",
             });
     }
 
@@ -55,7 +60,8 @@ export class MigrationRunCommand implements yargs.CommandModule {
             connection = await createConnection(connectionOptions);
 
             const options = {
-                transaction: args["t"] === "false" ? false : true
+                transaction: args["t"] === "false" ? false : true,
+                defaultSchema: <string>args["s"]
             };
             await connection.runMigrations(options);
             await connection.close();
